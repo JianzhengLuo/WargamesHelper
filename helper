@@ -1,0 +1,78 @@
+#! /usr/bin/env python3
+
+import click
+import json
+import subprocess
+
+
+@click.group("wargames")
+@click.option("-n", "--name")
+@click.option("-p", "--password")
+@click.pass_context
+def wargames(context, **kwargs):
+    context.obj = {**context.obj, **kwargs}
+
+
+def read_configs(file):
+    print(f"Read: {file}")
+    with open(file, "r", encoding="utf-8") as config_file:
+        return json.load(config_file)
+
+
+def write_configs(file, config):
+    print(f"Write: {file}")
+
+    with open(file, "w", encoding="utf-8") as config_file:
+        json.dump(config, config_file)
+
+
+@wargames.command()
+@click.argument("name")
+@click.argument("value")
+@click.pass_context
+def config(context, name, value):
+    global global_config
+
+    global_config[name] = value
+
+    write_configs("./config.json", global_config)
+
+
+@wargames.command()
+@click.pass_context
+@click.argument("level")
+@click.option("-p", "--password", type=str, prompt=True, default="", prompt_required=False)
+@click.option("--connect/--dont-connect", default=True)
+@click.option("--remember/--dont-remember", default=True)
+def bandit(context, level, password, connect, remember):
+    bandit_config = read_configs("./configs/bandit.json")
+
+    names = list(bandit_config.keys())
+    names.sort()
+
+    if level == "next":
+        level = int(names[-1].replace("bandit", "")) + 1
+    elif level == "last":
+        level = int(names[-1].replace("bandit", ""))
+    else:
+        level = int(level)
+
+    name = f"bandit{level}"
+
+    if (not password) and not (password_ := bandit_config.get(name)):
+        click.echo("Password required.")
+        return
+
+    if remember and password:
+        bandit_config[name] = password_
+        write_configs("./configs/bandit.json", bandit_config)
+
+    if connect:
+        subprocess.call(
+            f"gnome-terminal --title \"Bandit (Level {level} -> Level {level + 1})\" -- sshpass -p {password} ssh {name}@bandit.labs.overthewire.org -p 2220",
+            shell=True)
+
+
+if __name__ == "__main__":
+    wargames(obj={"name": "", "password": "", "config": (
+        global_config := read_configs("./config.json"))})
